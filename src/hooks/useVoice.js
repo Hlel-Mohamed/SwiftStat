@@ -11,22 +11,28 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // creates a start/stop tight loop (the mic flickering on and off). We therefore
 // restart ONLY when speech was detected very recently (a real mid-sentence cutoff),
 // throttle restarts so they can't loop, and otherwise stop cleanly.
-export function useVoice(onResult, { silenceMs = 1500 } = {}) {
+export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
   const [supported, setSupported] = useState(false)
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef(null)
   const wantListeningRef = useRef(false)
   const silenceTimerRef = useRef(null)
+  const maxTimerRef = useRef(null)
   const lastSpeechAtRef = useRef(0)
   const lastRestartAtRef = useRef(0)
+  // Transcript accumulation across Chrome's mid-phrase session cutoffs: `committed`
+  // holds text finalized before each bridged restart; `session` is the current
+  // session's text. Reporting committed+session keeps early words (fixes "fire…ball").
+  const committedRef = useRef('')
+  const sessionTextRef = useRef('')
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
 
-  const clearSilenceTimer = () => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current)
-      silenceTimerRef.current = null
-    }
+  const clearTimers = () => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+    if (maxTimerRef.current) clearTimeout(maxTimerRef.current)
+    silenceTimerRef.current = null
+    maxTimerRef.current = null
   }
 
   useEffect(() => {
@@ -41,7 +47,7 @@ export function useVoice(onResult, { silenceMs = 1500 } = {}) {
 
     const stopIntentionally = () => {
       wantListeningRef.current = false
-      clearSilenceTimer()
+      clearTimers()
       try {
         rec.stop()
       } catch {
@@ -49,10 +55,14 @@ export function useVoice(onResult, { silenceMs = 1500 } = {}) {
       }
     }
 
-    // (Re)start the quiet countdown. After `silenceMs` with no speech, stop for good.
     const armSilenceTimer = () => {
-      clearSilenceTimer()
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       silenceTimerRef.current = setTimeout(stopIntentionally, silenceMs)
+    }
+
+    const report = () => {
+      const full = `${committedRef.current} ${sessionTextRef.current}`.replace(/\s+/g, ' ').trim()
+      onResultRef.current?.(full)
     }
 
     const noteSpeech = () => {
@@ -65,21 +75,23 @@ export function useVoice(onResult, { silenceMs = 1500 } = {}) {
     rec.onresult = (e) => {
       noteSpeech()
       let transcript = ''
-      for (let i = 0; i < e.results.length; i++) {
-        transcript += e.results[i][0].transcript
-      }
-      onResultRef.current?.(transcript.trim())
+      for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript
+      sessionTextRef.current = transcript
+      report()
     }
 
     rec.onend = () => {
-      clearSilenceTimer()
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
       const now = Date.now()
       const spokeRecently = lastSpeechAtRef.current && now - lastSpeechAtRef.current < silenceMs
       const notLooping = now - lastRestartAtRef.current > 500
-      // Only bridge a genuine mid-sentence cutoff — never restart on pure silence,
-      // which is what caused the on/off flicker.
+      // Bridge a genuine mid-sentence cutoff — commit this session's text first so it
+      // isn't lost when the new (empty) session begins.
       if (wantListeningRef.current && spokeRecently && notLooping) {
         lastRestartAtRef.current = now
+        if (sessionTextRef.current) committedRef.current = `${committedRef.current} ${sessionTextRef.current}`.trim()
+        sessionTextRef.current = ''
         try {
           rec.start()
           return
@@ -88,13 +100,14 @@ export function useVoice(onResult, { silenceMs = 1500 } = {}) {
         }
       }
       wantListeningRef.current = false
+      clearTimers()
       setListening(false)
     }
 
     rec.onerror = (e) => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         wantListeningRef.current = false
-        clearSilenceTimer()
+        clearTimers()
         setListening(false)
       }
       // 'no-speech'/'aborted' are transient; onend handles them without restarting.
@@ -103,7 +116,8 @@ export function useVoice(onResult, { silenceMs = 1500 } = {}) {
     recognitionRef.current = rec
     return () => {
       wantListeningRef.current = false
-      clearSilenceTimer()
+      clearTimers()
+      recognitionRef.current = null
       try {
         rec.abort()
       } catch {
@@ -118,12 +132,13 @@ export function useVoice(onResult, { silenceMs = 1500 } = {}) {
     wantListeningRef.current = true
     lastSpeechAtRef.current = 0
     lastRestartAtRef.current = Date.now()
+    committedRef.current = ''
+    sessionTextRef.current = ''
     setListening(true)
     try {
       rec.start()
-      // Initial grace: give a few seconds to start talking before the first
-      // silence timeout can fire.
-      clearSilenceTimer()
+      clearTimers()
+      // Initial grace: a few seconds to start talking before the first silence timeout.
       silenceTimerRef.current = setTimeout(() => {
         wantListeningRef.current = false
         try {
@@ -132,14 +147,23 @@ export function useVoice(onResult, { silenceMs = 1500 } = {}) {
           /* ignore */
         }
       }, Math.max(silenceMs, 4000))
+      // Hard watchdog: never keep the mic open past maxMs, even under sustained noise.
+      maxTimerRef.current = setTimeout(() => {
+        wantListeningRef.current = false
+        try {
+          rec.stop()
+        } catch {
+          /* ignore */
+        }
+      }, maxMs)
     } catch {
       /* already started */
     }
-  }, [silenceMs])
+  }, [silenceMs, maxMs])
 
   const stop = useCallback(() => {
     wantListeningRef.current = false
-    clearSilenceTimer()
+    clearTimers()
     setListening(false)
     recognitionRef.current?.stop()
   }, [])

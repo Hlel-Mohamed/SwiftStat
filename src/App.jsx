@@ -36,31 +36,46 @@ export default function App() {
 
   function chooseEdition(id) {
     if (id === edition) return
-    localStorage.setItem('swiftstat-edition', id)
+    try {
+      localStorage.setItem('swiftstat-edition', id)
+    } catch {
+      /* storage disabled (e.g. Safari private) — switch anyway */
+    }
     setEdition(id)
   }
 
   const { supported, listening, toggle } = useVoice((transcript) => setQuery(transcript))
 
-  const attackCalc = useMemo(() => (query.trim() ? parseAttackQuery(query) : null), [query])
+  // Debounce the query so we don't run a fuzzy search over ~1300 docs and render up
+  // to 40 heavy cards on every keystroke.
+  const [debounced, setDebounced] = useState('')
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(query), 180)
+    return () => clearTimeout(id)
+  }, [query])
+
+  const attackCalc = useMemo(() => (debounced.trim() ? parseAttackQuery(debounced) : null), [debounced])
+  // `status` flips to 'loading' then 'ready' on an edition switch, so it (not
+  // `edition`) is what correctly re-runs the search against the newly-active index.
   const results = useMemo(() => {
-    if (status !== 'ready' || !query.trim()) return []
+    if (status !== 'ready' || !debounced.trim()) return []
     if (attackCalc) return search(attackCalc.weapon, 3)
-    return search(query)
-  }, [query, attackCalc, status, edition])
+    return search(debounced)
+  }, [debounced, attackCalc, status])
 
   return (
     <div className="app">
       <header className="app-head">
         <div className="title-row">
           <h1>SwiftStat</h1>
-          <div className="edition-toggle" role="group" aria-label="Rules edition">
+          <div className="edition-toggle" role="radiogroup" aria-label="Rules edition">
             {Object.values(EDITIONS).map((e) => (
               <button
                 key={e.id}
                 className={`edition ${edition === e.id ? 'active' : ''}`}
                 onClick={() => chooseEdition(e.id)}
-                aria-pressed={edition === e.id}
+                role="radio"
+                aria-checked={edition === e.id}
               >
                 {e.label}
               </button>
@@ -86,7 +101,8 @@ export default function App() {
             className={`mic ${listening ? 'listening' : ''}`}
             onClick={toggle}
             title={listening ? 'Listening — stops on pause (tap to stop now)' : 'Tap to talk'}
-            aria-label="Voice search"
+            aria-label={listening ? 'Listening — tap to stop voice search' : 'Start voice search'}
+            aria-pressed={listening}
           >
             {listening ? '● Listening' : '🎤'}
           </button>
@@ -115,7 +131,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="results">
+      <main className="results" aria-live="polite" aria-busy={status === 'loading'}>
         {status === 'loading' && <p className="muted">Loading {EDITIONS[edition].label} rules…</p>}
         {status === 'error' && (
           <p className="muted">Couldn’t load the rules data. Check your connection and reload.</p>
@@ -124,19 +140,22 @@ export default function App() {
         {results.map((entry) => (
           <Card key={entry.id} entry={entry} />
         ))}
-        {status === 'ready' && query && !attackCalc && results.length === 0 && (
+        {status === 'ready' && debounced.trim() && !attackCalc && results.length === 0 && (
           <p className="muted">No match. Try a spell, condition, monster, action, or weapon name.</p>
         )}
       </main>
 
       <footer className="app-foot">
         <p className="muted small">
-          {status === 'ready' ? `${count} cards · ` : ''}Content from the{' '}
+          {status === 'ready' ? `${count} cards · ` : ''}Includes material from the{' '}
           <a href="https://dnd.wizards.com/resources/systems-reference-document" target="_blank" rel="noreferrer">
-            D&amp;D SRD
+            System Reference Document 5.1 &amp; 5.2.1
           </a>{' '}
-          © Wizards of the Coast, CC-BY-4.0 (5.1 &amp; 5.2.1). 5.2.1 change notes summarized in our own words.
-          SwiftStat is unofficial and unaffiliated.
+          by Wizards of the Coast, licensed under{' '}
+          <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank" rel="noreferrer">
+            CC-BY-4.0
+          </a>
+          . 5.2.1 change notes are summarized in our own words. SwiftStat is unofficial and unaffiliated.
         </p>
       </footer>
     </div>
