@@ -7,6 +7,8 @@ import { abilityModifier } from './dice.js'
 export const ABILITY_WORDS =
   'str|dex|con|int|wis|cha|strength|dexterity|constitution|intelligence|wisdom|charisma'
 
+export const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha']
+
 export function parseStats(raw) {
   const lower = ` ${raw.toLowerCase()} `
   // `q` strips all punctuation (word matching); `qs` keeps + and - (ability modifiers).

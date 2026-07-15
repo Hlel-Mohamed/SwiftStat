@@ -10,8 +10,8 @@
 // *correct*. If a query doesn't look like an attack calc, `parseAttackQuery`
 // returns null and the app falls back to plain search.
 
-import { proficiencyBonus, parseDice, formatDice, averageDamage } from './dice.js'
-import { parseStats } from './parse.js'
+import { abilityModifier, proficiencyBonus, parseDice, formatDice, averageDamage } from './dice.js'
+import { parseStats, ABILITY_KEYS } from './parse.js'
 
 // Weapon table. Flags:
 //   finesse   → may use the higher of STR/DEX
@@ -70,8 +70,11 @@ function attacksFromClass(className, level) {
   return 2
 }
 
-export function parseAttackQuery(raw) {
-  const { q, abilities, modOf, level, loneMod } = parseStats(raw)
+// `defaults` (from an active character) supply class/level/ability scores when the
+// query omits them, so "daggers full attack" can compute a full Sneak-Attack line.
+// Anything typed always overrides the character.
+export function parseAttackQuery(raw, defaults = {}) {
+  const { q, abilities: typed, level: typedLevel, loneMod } = parseStats(raw)
 
   // --- Weapon (aliases + plural detection for two-weapon fighting) ---
   let weaponName = null
@@ -89,13 +92,25 @@ export function parseAttackQuery(raw) {
   if (!weaponName) return null // no weapon → not an attack query
   const weapon = WEAPONS[weaponName]
 
-  // --- Class ---
-  let className = null
+  // --- Class (typed, else from the active character) ---
+  let typedClass = null
   for (const name of Object.keys(CLASS_INFO)) {
-    if (q.includes(` ${name} `)) {
-      className = name
-      break
-    }
+    if (q.includes(` ${name} `)) { typedClass = name; break }
+  }
+  const className = typedClass ?? defaults.className ?? null
+  const level = typedLevel ?? (defaults.level != null ? defaults.level : null)
+
+  // --- Merge abilities: typed wins, else the character's score ---
+  const defAbil = defaults.abilities || {}
+  const abil = {}
+  for (const k of ABILITY_KEYS) {
+    if (typed[k]) abil[k] = typed[k]
+    else if (defAbil[k] != null) abil[k] = { score: defAbil[k], fromDefault: true }
+  }
+  const modOfM = (k) => {
+    const a = abil[k]
+    if (!a) return null
+    return a.mod != null ? a.mod : abilityModifier(a.score)
   }
 
   // --- Ability selection: bows force DEX; finesse takes the better modifier ---
@@ -103,8 +118,8 @@ export function parseAttackQuery(raw) {
   if (weapon.ranged) {
     abilityUsed = 'dex'
   } else if (weapon.finesse) {
-    const s = modOf('str')
-    const d = modOf('dex')
+    const s = modOfM('str')
+    const d = modOfM('dex')
     if (s != null && d != null) abilityUsed = d >= s ? 'dex' : 'str'
     else if (d != null) abilityUsed = 'dex'
     else if (s != null) abilityUsed = 'str'
@@ -117,9 +132,9 @@ export function parseAttackQuery(raw) {
   let abilMod
   let abilityScore = null
   let abilityGiven
-  const chosen = abilities[abilityUsed]
+  const chosen = abil[abilityUsed]
   if (chosen) {
-    abilMod = modOf(abilityUsed)
+    abilMod = modOfM(abilityUsed)
     abilityScore = chosen.score ?? null
     abilityGiven = chosen.mod != null ? 'modifier' : 'score'
   } else if (loneMod != null) {
@@ -130,6 +145,14 @@ export function parseAttackQuery(raw) {
     abilityScore = 10
     abilityGiven = 'assumed'
   }
+
+  // Did the active character fill anything in? (for the "using {name}" note)
+  const usedDefaults = Boolean(
+    defaults.name &&
+      ((!typedClass && defaults.className) ||
+        (typedLevel == null && defaults.level != null) ||
+        chosen?.fromDefault),
+  )
 
   // --- Damage die: versatile weapons upgrade when wielded two-handed ---
   const twoHandedRequested = /\btwo\s*handed\b|\bversatile\b/.test(q)
@@ -142,11 +165,16 @@ export function parseAttackQuery(raw) {
   const offhand = twoWeapon && wantsFull
 
   // --- Gate: only produce a calc when the query actually looks like an attack.
-  // A bare weapon name ("longsword") should just show the item card, not a weird calc.
-  const hasAbility = Object.keys(abilities).length > 0
+  // A bare weapon name ("longsword") should just show the item card — UNLESS a character
+  // is active, in which case the weapon + their stats is a deliberate calc.
+  const hasTyped = Object.keys(typed).length > 0
+  const defaultsActive = Boolean(
+    defaults.className || defaults.level != null || (defaults.abilities && Object.keys(defaults.abilities).length),
+  )
   const attackWord = /\b(attack|attacks|damage|dmg|hit|full|dual|twf|strike|swing|dpr|dps)\b/.test(q)
   const looksLikeAttack =
-    hasAbility || loneMod != null || className != null || level != null || twoHandedRequested || usedPlural || attackWord
+    hasTyped || loneMod != null || typedClass != null || typedLevel != null || twoHandedRequested ||
+    usedPlural || attackWord || defaultsActive
   if (!looksLikeAttack) return null
 
   // --- Build damage ---
@@ -190,6 +218,7 @@ export function parseAttackQuery(raw) {
     weapon: weaponName,
     className,
     level,
+    character: usedDefaults ? defaults.name : null,
     abilityUsed,
     abilityScore,
     abilityMod: abilMod,

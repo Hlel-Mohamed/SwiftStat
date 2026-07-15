@@ -36,4 +36,27 @@ describe('parseCasterQuery', () => {
     expect(parseCasterQuery('18 int')).toBeNull()
     expect(parseCasterQuery('fireball')).toBeNull()
   })
+
+  describe('character defaults (auto-fill)', () => {
+    const wiz = { name: 'Tas', className: 'wizard', level: 5, abilities: { int: 18 } }
+
+    it('fills DC/attack from an active caster given a casting keyword', () => {
+      const r = parseCasterQuery('spell save dc', wiz)
+      expect(r.saveDC).toBe(15) // 8 + prof 3 + int mod 4
+      expect(r.spellAttack).toBe(7)
+      expect(r.character).toBe('Tas')
+    })
+
+    it('still needs casting intent — a bare search does not fire', () => {
+      expect(parseCasterQuery('goblin', wiz)).toBeNull()
+      expect(parseCasterQuery('', wiz)).toBeNull()
+    })
+
+    it('does not use a non-caster character class', () => {
+      const barb = { name: 'Grok', className: 'barbarian', level: 5, abilities: { str: 18 } }
+      // "spell dc" keyword fires, but barbarian has no casting ability and no ability was
+      // typed → nothing to compute → null.
+      expect(parseCasterQuery('spell dc', barb)).toBeNull()
+    })
+  })
 })

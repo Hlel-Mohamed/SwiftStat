@@ -103,4 +103,30 @@ describe('parseAttackQuery', () => {
     expect(r.abilityMod).toBe(0)
     expect(r.notes.join(' ')).toMatch(/assumed \+0/i)
   })
+
+  describe('character defaults (auto-fill)', () => {
+    const rogue = { name: 'Vex', className: 'rogue', level: 12, abilities: { dex: 20 } }
+
+    it('auto-fills class/level/ability from an active character', () => {
+      const r = parseAttackQuery('daggers full attack', rogue)
+      // DEX 20 (+5), level 12 → prof +4, Sneak 6d6, two daggers
+      expect(r.formula).toBe('5 + 2d4 + 6d6')
+      expect(r.sneak).toBe('6d6')
+      expect(r.toHit).toBe(9)
+      expect(r.character).toBe('Vex')
+    })
+
+    it('a bare weapon with an active character still calcs (deliberate)', () => {
+      expect(parseAttackQuery('dagger', rogue)).not.toBeNull()
+    })
+
+    it('a bare weapon with NO character stays null', () => {
+      expect(parseAttackQuery('dagger')).toBeNull()
+    })
+
+    it('typed values override the character', () => {
+      const r = parseAttackQuery('daggers full attack 10 dex', rogue)
+      expect(r.abilityMod).toBe(0) // typed DEX 10 beats the character's 20
+    })
+  })
 })

@@ -4,8 +4,8 @@
 // Reuses the shared score/modifier parsing, so "wizard 18 int level 5" and
 // "cleric +3 wis lvl 7" both work. Returns null unless the query clearly concerns
 // casting (a caster class or a casting keyword) AND supplies an ability.
-import { proficiencyBonus } from './dice.js'
-import { parseStats } from './parse.js'
+import { abilityModifier, proficiencyBonus } from './dice.js'
+import { parseStats, ABILITY_KEYS } from './parse.js'
 
 // Caster class → [short ability key, display name].
 const CASTERS = {
@@ -22,44 +22,59 @@ const CASTERS = {
 
 const withSign = (n) => `${n >= 0 ? '+' : ''}${n}`
 
-export function parseCasterQuery(raw) {
-  const { q, abilities, modOf, level, loneMod } = parseStats(raw)
+// `defaults` (from an active character) supply class/level/ability when the query omits
+// them. Intent is still required (a typed caster class or a casting keyword) — an active
+// character only fills in the numbers, so a bare search never spawns a DC card.
+export function parseCasterQuery(raw, defaults = {}) {
+  const { q, abilities: typed, level: typedLevel, loneMod } = parseStats(raw)
 
-  let className = null
+  let typedClass = null
   for (const name of Object.keys(CASTERS)) {
-    if (q.includes(` ${name} `)) {
-      className = name
-      break
-    }
+    if (q.includes(` ${name} `)) { typedClass = name; break }
   }
   const castingKeyword = /\b(spell|spells|spellcast\w*|cast|casting|dc|save dc|spell save|spell attack)\b/.test(q)
-  const hasAbility = Object.keys(abilities).length > 0
+  if (!(typedClass || castingKeyword)) return null
 
-  // Gate: must be about casting AND provide an ability (DC/attack are meaningless
-  // without one). Keeps a bare "wizard" or "18 int" out of the calculator.
-  if (!(className || castingKeyword)) return null
-  if (!(hasAbility || loneMod != null)) return null
+  // Use the active character's class only if it's a caster.
+  const className = typedClass ?? (defaults.className && CASTERS[defaults.className] ? defaults.className : null)
+  const level = typedLevel ?? (defaults.level != null ? defaults.level : null)
 
-  // Choose the spellcasting ability. Prefer the class's ability if its value was given;
-  // otherwise fall back to any ability provided, then a lone modifier.
+  // Merge abilities: typed wins, else the character's score.
+  const defAbil = defaults.abilities || {}
+  const abil = {}
+  for (const k of ABILITY_KEYS) {
+    if (typed[k]) abil[k] = typed[k]
+    else if (defAbil[k] != null) abil[k] = { score: defAbil[k], fromDefault: true }
+  }
+  const modOfM = (k) => {
+    const a = abil[k]
+    if (!a) return null
+    return a.mod != null ? a.mod : abilityModifier(a.score)
+  }
+
+  // Choose the spellcasting ability: the class's ability if we have it, else any provided,
+  // else a lone modifier. If nothing resolves, we can't compute a DC.
   let abilityKey = className ? CASTERS[className][0] : null
   let mod
   let score = null
   let given
-  if (abilityKey && abilities[abilityKey]) {
-    mod = modOf(abilityKey)
-    score = abilities[abilityKey].score ?? null
-    given = abilities[abilityKey].mod != null ? 'modifier' : 'score'
-  } else if (hasAbility) {
-    // Use whichever ability was provided (e.g. "18 int spell dc" with no class).
-    const key = abilityKey && abilities[abilityKey] ? abilityKey : Object.keys(abilities)[0]
+  let fromDefault = false
+  if (abilityKey && abil[abilityKey]) {
+    mod = modOfM(abilityKey)
+    score = abil[abilityKey].score ?? null
+    given = abil[abilityKey].mod != null ? 'modifier' : 'score'
+    fromDefault = Boolean(abil[abilityKey].fromDefault)
+  } else if (Object.keys(typed).length) {
+    const key = Object.keys(typed)[0]
     abilityKey = key
-    mod = modOf(key)
-    score = abilities[key].score ?? null
-    given = abilities[key].mod != null ? 'modifier' : 'score'
-  } else {
+    mod = modOfM(key)
+    score = typed[key].score ?? null
+    given = typed[key].mod != null ? 'modifier' : 'score'
+  } else if (loneMod != null) {
     mod = loneMod
     given = 'modifier'
+  } else {
+    return null // nothing to compute a DC from
   }
 
   const prof = proficiencyBonus(level ?? 1)
@@ -70,11 +85,17 @@ export function parseCasterQuery(raw) {
   const notes = []
   if (level == null) notes.push('Proficiency assumes level 1 (+2) — add a level to scale it.')
 
+  const usedDefaults = Boolean(
+    defaults.name &&
+      ((!typedClass && className) || (typedLevel == null && defaults.level != null) || fromDefault),
+  )
+
   return {
     kind: 'caster-calc',
     query: raw,
     className,
     level,
+    character: usedDefaults ? defaults.name : null,
     abilityKey,
     abilityName,
     abilityScore: score,
