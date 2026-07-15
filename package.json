@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "data": "node scripts/build-data.mjs",
+    "data:personal": "SWIFTSTAT_PROFILE=personal node scripts/build-data.mjs",
+    "dev:personal": "SWIFTSTAT_PROFILE=personal vite",
+    "build:personal": "SWIFTSTAT_PROFILE=personal vite build"
   },
   "dependencies": {
     "minisearch": "^7.2.0",

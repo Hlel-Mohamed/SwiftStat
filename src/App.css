@@ -20,6 +20,8 @@
   --species: #b06fd8;
   --feat: #d8933f;
   --weapon-mastery: #c9662a;
+  --subclass: #4a90d8;
+  --custom: #35b0a0;
 }
 
 * {
@@ -83,14 +85,27 @@ body {
   align-items: center;
 }
 
-.badge-51 {
+.badge-51,
+.badge-custom {
   font-size: 0.62rem;
   font-weight: 700;
   color: var(--bg);
-  background: var(--rule);
   border-radius: 999px;
   padding: 0.12rem 0.4rem;
   letter-spacing: 0.03em;
+}
+
+.badge-51 {
+  background: var(--rule);
+}
+
+.badge-custom {
+  background: var(--custom);
+}
+
+.build-tag {
+  margin-left: 0.5rem;
+  vertical-align: middle;
 }
 
 .edition-note {
@@ -210,6 +225,7 @@ body {
 .card-species { border-left-color: var(--species); }
 .card-feat { border-left-color: var(--feat); }
 .card-weapon-mastery { border-left-color: var(--weapon-mastery); }
+.card-subclass { border-left-color: var(--subclass); }
 
 .abilities {
   display: grid;

@@ -12,6 +12,7 @@ const TYPE_LABEL = {
   species: 'Species',
   feat: 'Feat',
   'weapon-mastery': 'Mastery',
+  subclass: 'Subclass',
 }
 
 function Row({ label, value }) {
@@ -49,6 +50,9 @@ export function Card({ entry }) {
       <header className="card-head">
         <h2>{entry.name}</h2>
         <span className="badges">
+          {entry.personal && (
+            <span className="badge-custom" title="Your custom card (personal build)">Custom</span>
+          )}
           {entry.fromEdition && (
             <span className="badge-51" title="Shown from 5e (2014) — not in the 2024 SRD">{entry.fromEdition}</span>
           )}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { loadIndex, search, EDITIONS, DEFAULT_EDITION } from './engine/search.js'
+import { loadIndex, search, EDITIONS, DEFAULT_EDITION, PROFILE } from './engine/search.js'
 import { parseAttackQuery } from './engine/query.js'
 import { useVoice } from './hooks/useVoice.js'
 import { Card, AttackCard } from './components/Card.jsx'
@@ -67,7 +67,10 @@ export default function App() {
             ))}
           </div>
         </div>
-        <p className="tagline">D&amp;D rules at a glance — search, voice, instant cards.</p>
+        <p className="tagline">
+          D&amp;D rules at a glance — search, voice, instant cards.
+          {PROFILE === 'personal' && <span className="badge-custom build-tag">Personal build</span>}
+        </p>
       </header>
 
       <div className="search-bar">

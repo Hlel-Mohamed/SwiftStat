@@ -20,6 +20,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, '..')
 const dbRoot = process.argv[2] || path.resolve(projectRoot, '../5e-database')
 const INCLUDE_2024_CHANGES = !process.env.NO_2024
+// 'public' (SRD-only) or 'personal' (also merges your git-ignored custom cards).
+const PROFILE = process.env.SWIFTSTAT_PROFILE === 'personal' ? 'personal' : 'public'
+const EDITION_IDS = ['2014', '2024']
 
 const dir2014 = path.join(dbRoot, 'src/2014/en')
 const dir2024 = path.join(dbRoot, 'src/2024/en')
@@ -183,13 +186,43 @@ const borrowed2024 = tagBorrowed([
 ])
 const cards2024 = applyAliases([...native2024, ...borrowed2024, ...(INCLUDE_2024_CHANGES ? makeChangeCards() : [])])
 
+// --- personal cards (profile === 'personal') ----------------------------------
+// Authored by you in the git-ignored personal-data/ folder. Kept in SEPARATE
+// personal-<edition>.json files so the committed srd-*.json stay SRD-only and safe
+// to host publicly. Each card may set "editions": ["2014"] to limit where it shows
+// (default: both). See personal-data/README.md for the format.
+function loadPersonalCards() {
+  const dir = path.join(projectRoot, 'personal-data')
+  if (!fs.existsSync(dir)) return { '2014': [], '2024': [] }
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'))
+  const byEdition = { '2014': [], '2024': [] }
+  for (const f of files) {
+    let arr
+    try {
+      arr = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))
+    } catch (e) {
+      console.error(`  ! skipping personal-data/${f}: invalid JSON (${e.message})`)
+      continue
+    }
+    for (const raw of Array.isArray(arr) ? arr : []) {
+      const editions = Array.isArray(raw.editions) && raw.editions.length ? raw.editions : EDITION_IDS
+      const { editions: _drop, ...rest } = raw
+      const slug = (raw.name || 'card').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      const card = { id: raw.id || `personal-${raw.type || 'card'}-${slug}`, personal: true, ...rest }
+      for (const ed of editions) if (byEdition[ed]) byEdition[ed].push(card)
+    }
+  }
+  return byEdition
+}
+const personalByEdition = PROFILE === 'personal' ? loadPersonalCards() : { '2014': [], '2024': [] }
+
 // --- write --------------------------------------------------------------------
 const outDir = path.join(projectRoot, 'public/data')
 fs.mkdirSync(outDir, { recursive: true })
-// Remove the old single-file dataset if present.
-const legacy = path.join(outDir, 'srd.json')
-if (fs.existsSync(legacy)) fs.unlinkSync(legacy)
+const rm = (p) => fs.existsSync(p) && fs.unlinkSync(p)
+rm(path.join(outDir, 'srd.json')) // remove the old single-file dataset if present
 
+console.log(`Profile: ${PROFILE}`)
 for (const [edition, cards] of [['2014', cards2014], ['2024', cards2024]]) {
   const file = path.join(outDir, `srd-${edition}.json`)
   fs.writeFileSync(file, JSON.stringify(cards))
@@ -199,4 +232,15 @@ for (const [edition, cards] of [['2014', cards2014], ['2024', cards2024]]) {
   const kb = (fs.statSync(file).size / 1024).toFixed(0)
   console.log(`srd-${edition}.json: ${cards.length} cards (${kb} KB)${borrowed ? `, ${borrowed} borrowed 5.1` : ''}`)
   console.log('  ', JSON.stringify(byType))
+
+  // Personal file: written only in the personal profile; purged in the public
+  // profile so a subsequent public build can never ship stale custom content.
+  const personalFile = path.join(outDir, `personal-${edition}.json`)
+  const personal = personalByEdition[edition] || []
+  if (PROFILE === 'personal' && personal.length) {
+    fs.writeFileSync(personalFile, JSON.stringify(personal))
+    console.log(`personal-${edition}.json: ${personal.length} custom cards (git-ignored)`)
+  } else {
+    rm(personalFile)
+  }
 }
