@@ -3,14 +3,19 @@
 // deciding an action quickly. (A roller can be added later.)
 
 // Parse "2d6+3" / "1d8" / "4" into { count, sides, flat }.
+// Requires the die's count and sides to be adjacent (no "2 d6"); guards against
+// zero-/negative-sided dice. Non-string input yields an empty list.
 export function parseDice(expr) {
   const parts = []
-  const re = /([+-]?)\s*(\d*)d(\d+)|([+-]?)\s*(\d+)/gi
+  if (typeof expr !== 'string') return parts
+  const re = /([+-]?)(\d*)d(\d+)|([+-]?)\s*(\d+)/gi
   let m
   while ((m = re.exec(expr)) !== null) {
     if (m[3]) {
+      const sides = parseInt(m[3], 10)
+      if (sides < 1) continue
       const sign = m[1] === '-' ? -1 : 1
-      parts.push({ count: sign * (m[2] ? parseInt(m[2], 10) : 1), sides: parseInt(m[3], 10) })
+      parts.push({ count: sign * (m[2] ? parseInt(m[2], 10) : 1), sides })
     } else if (m[5]) {
       const sign = m[4] === '-' ? -1 : 1
       parts.push({ flat: sign * parseInt(m[5], 10) })
