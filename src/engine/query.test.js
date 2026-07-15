@@ -61,4 +61,46 @@ describe('parseAttackQuery', () => {
     expect(r).not.toBeNull()
     expect(r.sneak).toBe('2d6')
   })
+
+  it('accepts an ability as a score OR a signed modifier (18 dex == +4 dex)', () => {
+    const score = parseAttackQuery('rapier 18 dex')
+    const mod = parseAttackQuery('rapier +4 dex')
+    expect(score.abilityMod).toBe(4)
+    expect(mod.abilityMod).toBe(4)
+    expect(mod.abilityUsed).toBe('dex')
+    expect(mod.formula).toBe('4 + 1d8')
+  })
+
+  it('accepts the modifier before the ability too (dex +4)', () => {
+    expect(parseAttackQuery('rapier dex +4').abilityMod).toBe(4)
+  })
+
+  it('handles a negative modifier', () => {
+    const r = parseAttackQuery('club -1 str')
+    expect(r.abilityMod).toBe(-1)
+    expect(r.formula).toBe('-1 + 1d4')
+  })
+
+  it('does not treat a bare weapon name as an attack query (no weird calc)', () => {
+    expect(parseAttackQuery('longsword')).toBeNull()
+    expect(parseAttackQuery('dagger')).toBeNull()
+    expect(parseAttackQuery('short sword')).toBeNull()
+  })
+
+  it('uses a lone signed number as the modifier', () => {
+    const r = parseAttackQuery('longsword +3')
+    expect(r.abilityMod).toBe(3)
+    expect(r.formula).toBe('3 + 1d8')
+  })
+
+  it('accepts two-word weapon spellings', () => {
+    expect(parseAttackQuery('16 str great sword').weapon).toBe('greatsword')
+  })
+
+  it('notes when no ability was given rather than silently using +0', () => {
+    const r = parseAttackQuery('greatsword damage')
+    expect(r).not.toBeNull()
+    expect(r.abilityMod).toBe(0)
+    expect(r.notes.join(' ')).toMatch(/assumed \+0/i)
+  })
 })

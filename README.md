@@ -11,6 +11,8 @@ Supports two rules editions: **5e (2014, SRD 5.1)** and **5.5 (2024, SRD 5.2.1)*
   `multiattack`, `pack tactics`, or `finesse` finds the right cards.
 - **Attack math** without an LLM: type `rogue level 5 18 dex daggers full attack` →
   `4 + 2d4 + 3d6` (incl. Sneak Attack). Deterministic — computed from SRD rules, not guessed.
+  Give the ability as a **score** (`18 dex`) or a **modifier** (`+4 dex`); a bare weapon
+  name just shows the item card (no spurious calc).
 - **Edition toggle** (5e / 5.5), persisted. The 2024 SRD ships no spells/monsters, so those
   are shown from 5.1 with a small "5.1" badge.
 - **Tap-to-talk voice** search (Web Speech API where supported).
