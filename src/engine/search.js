@@ -18,12 +18,33 @@ export const PROFILE = import.meta.env.VITE_PROFILE || 'public'
 
 const cache = new Map() // edition -> { promise, mini, byId }
 let active = null
+let requestSeq = 0 // monotonic token so only the latest loadIndex sets `active`
+
+// Flatten every searchable bit of a card into one string — crucially the nested
+// monster traits/actions/legendary/reactions and the scalar fields that were
+// previously unindexed (classes, save, properties, saves/skills, resistances…).
+// This is why "multiattack", "pack tactics", "finesse", "wizard" now find cards.
+function cardBody(doc) {
+  const bits = [
+    doc.text, doc.summary, doc.category, doc.school, doc.meta, doc.rarity,
+    doc.classes, doc.duration, doc.save, doc.higherLevel,
+    doc.mastery, doc.rangeText, doc.senses, doc.languages,
+    doc.savingThrows, doc.skills, doc.damageResistances, doc.damageVulnerabilities,
+    doc.damageImmunities, doc.conditionImmunities, doc.ability,
+    Array.isArray(doc.properties) ? doc.properties.join(' ') : null,
+  ]
+  for (const key of ['traits', 'actions', 'reactions', 'legendaryActions']) {
+    for (const a of doc[key] || []) bits.push(a.name, a.desc)
+  }
+  return bits.filter(Boolean).join(' ')
+}
 
 function buildMini() {
   return new MiniSearch({
-    fields: ['name', 'aliases', 'text', 'summary', 'type', 'category', 'school', 'meta', 'rarity'],
+    fields: ['name', 'aliases', 'body'],
     storeFields: ['type'],
     extractField: (doc, field) => {
+      if (field === 'body') return cardBody(doc)
       const v = doc[field]
       return Array.isArray(v) ? v.join(' ') : v == null ? '' : String(v)
     },
@@ -51,14 +72,22 @@ export function loadIndex(edition = DEFAULT_EDITION) {
     entry = {}
     entry.promise = fetchCards(edition).then((cards) => {
       entry.mini = buildMini()
-      entry.mini.addAll(cards)
-      entry.byId = new Map(cards.map((c) => [c.id, c]))
-      return { edition, count: cards.length }
+      entry.byId = new Map()
+      for (const c of cards) {
+        if (entry.byId.has(c.id)) continue // skip a duplicate id rather than throwing
+        entry.byId.set(c.id, c)
+        entry.mini.add(c)
+      }
+      return { edition, count: entry.byId.size }
     })
+    // Don't cache a rejected promise — a transient failure would brick the edition
+    // until a full reload. Drop the entry so the next loadIndex retries the fetch.
+    entry.promise.catch(() => cache.delete(edition))
     cache.set(edition, entry)
   }
+  const token = ++requestSeq
   return entry.promise.then((res) => {
-    active = edition
+    if (token === requestSeq) active = edition // last request wins, not last resolved
     return res
   })
 }

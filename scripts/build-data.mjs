@@ -110,28 +110,48 @@ function makeMagicItem(mi) {
 }
 
 const abilMod = (score) => { const m = Math.floor((score - 10) / 2); return `${score} (${m >= 0 ? '+' : ''}${m})` }
+// Saving throws / skills live in `proficiencies` with names like "Saving Throw: DEX".
+function profList(m, prefix) {
+  const out = (m.proficiencies || [])
+    .filter((p) => p.proficiency?.name?.startsWith(prefix))
+    .map((p) => `${p.proficiency.name.slice(prefix.length).trim()} ${p.value >= 0 ? '+' : ''}${p.value}`)
+  return out.length ? out.join(', ') : undefined
+}
+function acText(ac) {
+  if (!Array.isArray(ac)) return ac
+  return ac.map((a) => `${a.value}${a.type && a.type !== 'dex' ? ` (${a.type})` : ''}`).join(' or ')
+}
+const actionList = (arr) => (arr || []).map((a) => ({ name: a.name, desc: clip(a.desc, 700) }))
 function makeMonster(m) {
-  const ac = Array.isArray(m.armor_class) ? m.armor_class[0]?.value : m.armor_class
   return {
     id: `monster-${m.index}`, type: 'monster', name: m.name,
     meta: `${m.size} ${m.type}${m.subtype ? ` (${m.subtype})` : ''}, ${m.alignment}`,
-    ac, hp: m.hit_points ? `${m.hit_points} (${m.hit_dice})` : undefined,
+    ac: acText(m.armor_class),
+    // Use hit_points_roll ("19d12+133") which includes the CON term; hit_dice omits it.
+    hp: m.hit_points ? `${m.hit_points} (${m.hit_points_roll || m.hit_dice})` : undefined,
     speed: m.speed ? Object.entries(m.speed).map(([k, v]) => `${k} ${v}`).join(', ') : undefined,
     abilities: { STR: abilMod(m.strength), DEX: abilMod(m.dexterity), CON: abilMod(m.constitution), INT: abilMod(m.intelligence), WIS: abilMod(m.wisdom), CHA: abilMod(m.charisma) },
+    savingThrows: profList(m, 'Saving Throw:'),
+    skills: profList(m, 'Skill:'),
     cr: m.challenge_rating, xp: m.xp,
     senses: m.senses ? Object.entries(m.senses).map(([k, v]) => `${k.replace(/_/g, ' ')} ${v}`).join(', ') : undefined,
     languages: m.languages || undefined,
+    damageResistances: m.damage_resistances?.join(', ') || undefined,
+    damageVulnerabilities: m.damage_vulnerabilities?.join(', ') || undefined,
     damageImmunities: m.damage_immunities?.join(', ') || undefined,
     conditionImmunities: m.condition_immunities?.map((c) => c.name).join(', ') || undefined,
-    traits: (m.special_abilities || []).map((a) => ({ name: a.name, desc: clip(a.desc, 400) })),
-    actions: (m.actions || []).map((a) => ({ name: a.name, desc: clip(a.desc, 400) })),
+    traits: actionList(m.special_abilities),
+    actions: actionList(m.actions),
+    reactions: actionList(m.reactions),
+    legendaryActions: actionList(m.legendary_actions),
   }
 }
 
 function makeSkill(s) { return { id: `skill-${s.index}`, type: 'skill', name: s.name, ability: s.ability_score?.name, text: clip(getText(s), 600) } }
 function makeRule(r) {
-  const text = getText(r).split('\n').filter((l) => !l.trim().startsWith('|')).join('\n').replace(/#{1,6}\s*/g, '')
-  return { id: `rule-${r.index}`, type: 'rule', name: r.name, text: clip(text.trim(), 900) }
+  // Keep table rows (lines starting with "|"); only strip markdown heading markers.
+  const text = getText(r).replace(/#{1,6}\s*/g, '')
+  return { id: `rule-${r.index}`, type: 'rule', name: r.name, text: clip(text.trim(), 1600) }
 }
 function makeFeat(f) { return { id: `feat-${f.index}`, type: 'feat', name: f.name, category: f.type ? `${f.type} feat` : 'Feat', text: clip(getText(f), 700) } }
 function makePoison(p) { return { id: `poison-${p.index}`, type: 'poison', name: p.name, category: p.type ? `${p.type} poison` : 'Poison', cost: cost(p.cost), text: clip(getText(p), 600) } }
@@ -222,6 +242,14 @@ fs.mkdirSync(outDir, { recursive: true })
 const rm = (p) => fs.existsSync(p) && fs.unlinkSync(p)
 rm(path.join(outDir, 'srd.json')) // remove the old single-file dataset if present
 
+// Sanity thresholds — a silently half-empty read() (missing upstream file) would
+// otherwise ship a broken dataset. Fail loudly instead.
+const MIN_COUNTS = {
+  '2014': { spell: 300, monster: 300, equipment: 200, 'magic-item': 300, condition: 10 },
+  '2024': { spell: 300, monster: 300, equipment: 150, 'magic-item': 200, feat: 10, poison: 10 },
+}
+const problems = []
+
 console.log(`Profile: ${PROFILE}`)
 for (const [edition, cards] of [['2014', cards2014], ['2024', cards2024]]) {
   const file = path.join(outDir, `srd-${edition}.json`)
@@ -232,6 +260,12 @@ for (const [edition, cards] of [['2014', cards2014], ['2024', cards2024]]) {
   const kb = (fs.statSync(file).size / 1024).toFixed(0)
   console.log(`srd-${edition}.json: ${cards.length} cards (${kb} KB)${borrowed ? `, ${borrowed} borrowed 5.1` : ''}`)
   console.log('  ', JSON.stringify(byType))
+
+  for (const [type, min] of Object.entries(MIN_COUNTS[edition])) {
+    if ((byType[type] || 0) < min) problems.push(`${edition}: ${type} = ${byType[type] || 0} (expected ≥ ${min})`)
+  }
+  const missingId = cards.find((c) => !c.id || !c.name)
+  if (missingId) problems.push(`${edition}: a ${missingId.type} card is missing id/name`)
 
   // Personal file: written only in the personal profile; purged in the public
   // profile so a subsequent public build can never ship stale custom content.
@@ -244,3 +278,10 @@ for (const [edition, cards] of [['2014', cards2014], ['2024', cards2024]]) {
     rm(personalFile)
   }
 }
+
+if (problems.length) {
+  console.error('\nData validation FAILED:')
+  for (const p of problems) console.error(`  ✗ ${p}`)
+  process.exit(1)
+}
+console.log('Data validation passed.')

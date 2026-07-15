@@ -26,9 +26,32 @@ function Row({ label, value }) {
 }
 
 // Preserve line breaks from the source text without dangerouslySetInnerHTML.
+// Strips leftover markdown bold markers; breaks between lines but not a trailing one.
 function Body({ text }) {
   if (!text) return null
-  return <p className="body">{text.split('\n').map((line, i) => <span key={i}>{line}<br /></span>)}</p>
+  const lines = text.replace(/\*\*/g, '').split('\n')
+  return (
+    <p className="body">
+      {lines.map((line, i) => (
+        <span key={i}>
+          {line}
+          {i < lines.length - 1 && <br />}
+        </span>
+      ))}
+    </p>
+  )
+}
+
+function ActionSection({ label, items }) {
+  if (!items?.length) return null
+  return (
+    <>
+      <p className="section-label">{label}</p>
+      {items.map((a, i) => (
+        <p key={i} className="body"><strong>{a.name}.</strong> {a.desc}</p>
+      ))}
+    </>
+  )
 }
 
 function AbilityGrid({ abilities }) {
@@ -104,6 +127,7 @@ export function Card({ entry }) {
         <p className="subtitle">{[entry.category, entry.cost].filter(Boolean).join(' · ')}</p>
       )}
       {entry.type === 'species' && <p className="subtitle">{entry.meta}</p>}
+      {entry.type === 'subclass' && entry.category && <p className="subtitle">{entry.category}</p>}
 
       {entry.type === 'monster' && (
         <>
@@ -113,17 +137,20 @@ export function Card({ entry }) {
           <Row label="Speed" value={entry.speed} />
           <Row label="CR" value={entry.cr != null ? `${entry.cr} (${entry.xp} XP)` : null} />
           {entry.abilities && <AbilityGrid abilities={entry.abilities} />}
+          <Row label="Saves" value={entry.savingThrows} />
+          <Row label="Skills" value={entry.skills} />
           <Row label="Senses" value={entry.senses} />
           <Row label="Languages" value={entry.languages} />
+          <Row label="Resist." value={entry.damageResistances} />
+          <Row label="Vuln." value={entry.damageVulnerabilities} />
           <Row label="Dmg. immun." value={entry.damageImmunities} />
           <Row label="Cond. immun." value={entry.conditionImmunities} />
           {entry.traits?.map((t, i) => (
             <p key={i} className="body"><strong>{t.name}.</strong> {t.desc}</p>
           ))}
-          {entry.actions?.length > 0 && <p className="section-label">Actions</p>}
-          {entry.actions?.map((a, i) => (
-            <p key={i} className="body"><strong>{a.name}.</strong> {a.desc}</p>
-          ))}
+          <ActionSection label="Actions" items={entry.actions} />
+          <ActionSection label="Reactions" items={entry.reactions} />
+          <ActionSection label="Legendary Actions" items={entry.legendaryActions} />
         </>
       )}
 
@@ -150,6 +177,9 @@ export function AttackCard({ calc }) {
       </header>
       <p className="subtitle">avg {calc.average} damage · to hit +{calc.toHit} · {calc.attacks}×</p>
       <p className="body">{calc.explanation}</p>
+      {calc.notes?.map((n, i) => (
+        <p key={i} className="muted small">{n}</p>
+      ))}
       <p className="muted small">Deterministic calc — no AI, computed from SRD rules.</p>
     </article>
   )
