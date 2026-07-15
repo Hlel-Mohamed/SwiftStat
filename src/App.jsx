@@ -8,9 +8,27 @@ import './App.css'
 
 const EXAMPLES = ['fireball', 'poisoned', 'goblin', 'longsword', 'rogue 18 dex daggers full attack', 'weapon mastery']
 
+// Plural category labels + a stable display order for the filter checkboxes.
+const CATEGORY_LABELS = {
+  spell: 'Spells', monster: 'Monsters', condition: 'Conditions', equipment: 'Equipment',
+  'magic-item': 'Magic Items', feat: 'Feats', species: 'Species', poison: 'Poisons',
+  'weapon-mastery': 'Masteries', skill: 'Skills', rule: 'Rules', subclass: 'Subclasses',
+  change: '5.2.1 Changes',
+}
+const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS)
+
 function initialEdition() {
   const saved = typeof localStorage !== 'undefined' && localStorage.getItem('swiftstat-edition')
   return saved && EDITIONS[saved] ? saved : DEFAULT_EDITION
+}
+
+function initialHidden() {
+  try {
+    const raw = localStorage.getItem('swiftstat-hidden')
+    return new Set(raw ? JSON.parse(raw) : [])
+  } catch {
+    return new Set()
+  }
 }
 
 export default function App() {
@@ -18,15 +36,18 @@ export default function App() {
   const [edition, setEdition] = useState(initialEdition)
   const [status, setStatus] = useState('loading') // 'loading' | 'ready' | 'error'
   const [count, setCount] = useState(0)
+  const [types, setTypes] = useState({}) // type -> count in the active edition
+  const [hidden, setHidden] = useState(initialHidden) // category types the user hid
 
   // Load (or switch) the edition index. Re-runs when `edition` changes.
   useEffect(() => {
     let alive = true
     setStatus('loading')
     loadIndex(edition)
-      .then(({ count }) => {
+      .then(({ count, types }) => {
         if (!alive) return
         setCount(count)
+        setTypes(types)
         setStatus('ready')
       })
       .catch(() => alive && setStatus('error'))
@@ -34,6 +55,28 @@ export default function App() {
       alive = false
     }
   }, [edition])
+
+  function toggleType(type) {
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type)
+      else next.add(type)
+      try {
+        localStorage.setItem('swiftstat-hidden', JSON.stringify([...next]))
+      } catch {
+        /* storage disabled — keep the in-memory filter anyway */
+      }
+      return next
+    })
+  }
+  function showAllCategories() {
+    setHidden(new Set())
+    try {
+      localStorage.removeItem('swiftstat-hidden')
+    } catch {
+      /* ignore */
+    }
+  }
 
   function chooseEdition(id) {
     if (id === edition) return
@@ -62,11 +105,14 @@ export default function App() {
   )
   // `status` flips to 'loading' then 'ready' on an edition switch, so it (not
   // `edition`) is what correctly re-runs the search against the newly-active index.
-  const results = useMemo(() => {
-    if (status !== 'ready' || !debounced.trim()) return []
-    if (attackCalc) return search(attackCalc.weapon, 3)
-    return search(debounced)
-  }, [debounced, attackCalc, status])
+  // Hidden categories are filtered out even for a direct search — the whole point is
+  // that hiding e.g. Monsters keeps them out of view (anti-metagaming).
+  const { results, hiddenCount } = useMemo(() => {
+    if (status !== 'ready' || !debounced.trim()) return { results: [], hiddenCount: 0 }
+    const raw = attackCalc ? search(attackCalc.weapon, 3) : search(debounced, 60)
+    const shown = raw.filter((r) => !hidden.has(r.type))
+    return { results: shown.slice(0, 40), hiddenCount: raw.length - shown.length }
+  }, [debounced, attackCalc, status, hidden])
 
   return (
     <div className="app">
@@ -119,6 +165,25 @@ export default function App() {
         )}
       </div>
 
+      {status === 'ready' && (
+        <details className="filters">
+          <summary>
+            Categories{hidden.size > 0 ? ` · ${hidden.size} hidden` : ''}
+          </summary>
+          <div className="filter-list">
+            {CATEGORY_ORDER.filter((t) => types[t]).map((t) => (
+              <label key={t} className="filter-item">
+                <input type="checkbox" checked={!hidden.has(t)} onChange={() => toggleType(t)} />
+                {CATEGORY_LABELS[t]} <span className="muted small">{types[t]}</span>
+              </label>
+            ))}
+            {hidden.size > 0 && (
+              <button className="chip" onClick={showAllCategories}>Show all</button>
+            )}
+          </div>
+        </details>
+      )}
+
       {!query && status === 'ready' && (
         <div className="examples">
           <span className="muted small">Try:</span>
@@ -146,8 +211,17 @@ export default function App() {
         {results.map((entry) => (
           <Card key={entry.id} entry={entry} />
         ))}
+        {status === 'ready' && debounced.trim() && hiddenCount > 0 && (
+          <p className="muted small">
+            {hiddenCount} result{hiddenCount === 1 ? '' : 's'} hidden by category filters.
+          </p>
+        )}
         {status === 'ready' && debounced.trim() && !attackCalc && !casterCalc && results.length === 0 && (
-          <p className="muted">No match. Try a spell, condition, monster, action, or weapon name.</p>
+          <p className="muted">
+            {hiddenCount > 0
+              ? 'All matches are in hidden categories.'
+              : 'No match. Try a spell, condition, monster, action, or weapon name.'}
+          </p>
         )}
       </main>
 

@@ -73,12 +73,14 @@ export function loadIndex(edition = DEFAULT_EDITION) {
     entry.promise = fetchCards(edition).then((cards) => {
       entry.mini = buildMini()
       entry.byId = new Map()
+      const types = {}
       for (const c of cards) {
         if (entry.byId.has(c.id)) continue // skip a duplicate id rather than throwing
         entry.byId.set(c.id, c)
         entry.mini.add(c)
+        types[c.type] = (types[c.type] || 0) + 1
       }
-      return { edition, count: entry.byId.size }
+      return { edition, count: entry.byId.size, types }
     })
     // Don't cache a rejected promise — a transient failure would brick the edition
     // until a full reload. Drop the entry so the next loadIndex retries the fetch.

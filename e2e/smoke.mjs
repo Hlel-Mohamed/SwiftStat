@@ -75,6 +75,17 @@ try {
   const cells = await page.$$eval('.card-spell .scaling-cell', (els) => els.map((e) => e.textContent))
   rec('Fireball shows upcast scaling (3rd 8d6 … 9th)', cells.length >= 7 && /8d6/.test(cells.join(' ')), JSON.stringify(cells.slice(0, 2)))
 
+  // Category filter: hiding Monsters removes them even from a direct search.
+  const gobBefore = await query('goblin')
+  rec('goblin visible before filtering', gobBefore.some((c) => c.type === 'monster'))
+  await page.click('details.filters summary')
+  await page.click('.filter-item:has-text("Monsters") input')
+  await page.waitForTimeout(200)
+  const gobAfter = await page.$$eval('.card-monster', (els) => els.length)
+  rec('hiding Monsters hides them from search', gobAfter === 0, 'monster cards=' + gobAfter)
+  await page.click('.filter-item:has-text("Monsters") input') // restore
+  await page.waitForTimeout(150)
+
   // Edition toggle.
   await page.click('.edition:has-text("5.5")')
   await page.waitForFunction(() => !/Loading/.test(document.querySelector('.results')?.textContent || ''), { timeout: 8000 })
