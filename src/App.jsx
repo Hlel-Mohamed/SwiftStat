@@ -7,7 +7,34 @@ import { Card, AttackCard, SpellCastCard } from './components/Card.jsx'
 import { CharacterBar } from './components/CharacterBar.jsx'
 import './App.css'
 
-const EXAMPLES = ['fireball', 'poisoned', 'goblin', 'longsword', 'rogue 18 dex daggers full attack', 'weapon mastery']
+// Grouped starter queries — the empty state that teaches what SwiftStat can do.
+const EXAMPLE_GROUPS = [
+  {
+    label: 'Look things up',
+    hint: 'spells, monsters, conditions, items, feats…',
+    items: ['fireball', 'poisoned', 'goblin', 'longsword', 'bag of holding'],
+  },
+  {
+    label: 'Attack damage',
+    hint: 'type your weapon + stats → instant math',
+    items: ['20 str greatsword', 'rogue level 5 18 dex daggers full attack', '+4 dex rapier'],
+  },
+  {
+    label: 'Spell save DC',
+    hint: 'class + ability + level → DC & spell attack',
+    items: ['wizard 18 int level 5', 'cleric +3 wis'],
+  },
+]
+
+// Reference guide shown in the "How to search" panel.
+const HELP = [
+  { title: 'Search anything', body: 'Type a name — fireball, goblin, longsword, grappled — for an instant stat card. Monster trait/action text is searchable too (try multiattack).' },
+  { title: 'Attack math, no dice', body: 'Type a weapon with your stats: 20 str greatsword or rogue level 5 18 dex daggers full attack. Give ability as a score (18 dex) or a modifier (+4 dex).' },
+  { title: 'Spell DC & attack', body: 'Type a caster + ability + level: wizard 18 int level 5 → spell save DC and spell attack bonus.' },
+  { title: 'Upcasting', body: 'Damage spells show a table of damage at every slot level (and cantrips by character level) right on the card.' },
+  { title: 'Characters', body: 'Save a character (top-right) and the attack/spell math auto-fills their stats — then just type the weapon or spell.' },
+  { title: 'Filters & editions', body: 'Hide categories (e.g. Monsters, to avoid metagaming) under “Categories”, and switch 5e (2014) / 5.5 (2024) at the top.' },
+]
 
 // Plural category labels + a stable display order for the filter checkboxes.
 const CATEGORY_LABELS = {
@@ -47,6 +74,13 @@ function initialActiveChar() {
     return ''
   }
 }
+function initialHelpOpen() {
+  try {
+    return localStorage.getItem('swiftstat-seen-help') !== '1'
+  } catch {
+    return true
+  }
+}
 const save = (key, value) => {
   try {
     localStorage.setItem(key, value)
@@ -64,6 +98,13 @@ export default function App() {
   const [hidden, setHidden] = useState(initialHidden) // category types the user hid
   const [characters, setCharacters] = useState(initialCharacters)
   const [activeChar, setActiveChar] = useState(initialActiveChar)
+  const [helpOpen, setHelpOpen] = useState(initialHelpOpen)
+
+  function onHelpToggle(e) {
+    const open = e.target.open
+    setHelpOpen(open)
+    if (!open) save('swiftstat-seen-help', '1') // remember the guide was seen
+  }
 
   // Load (or switch) the edition index. Re-runs when `edition` changes.
   useEffect(() => {
@@ -249,13 +290,41 @@ export default function App() {
         </details>
       )}
 
+      {status === 'ready' && (
+        <details className="help" open={helpOpen} onToggle={onHelpToggle}>
+          <summary>How to search</summary>
+          <div className="help-body">
+            <p className="muted small">
+              SwiftStat isn’t just a lookup — you can <strong>type your stats and it does the math</strong>. Tap any
+              example to try it.
+            </p>
+            <ul className="help-list">
+              {HELP.map((h) => (
+                <li key={h.title}>
+                  <strong>{h.title}.</strong> {h.body}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      )}
+
       {!query && status === 'ready' && (
-        <div className="examples">
-          <span className="muted small">Try:</span>
-          {EXAMPLES.map((ex) => (
-            <button key={ex} className="chip" onClick={() => setQuery(ex)}>
-              {ex}
-            </button>
+        <div className="example-groups">
+          {EXAMPLE_GROUPS.map((g) => (
+            <div key={g.label} className="example-group">
+              <div className="example-head">
+                <span className="example-label">{g.label}</span>
+                <span className="muted small">{g.hint}</span>
+              </div>
+              <div className="example-chips">
+                {g.items.map((ex) => (
+                  <button key={ex} className="chip" onClick={() => setQuery(ex)}>
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
           {edition === '2024' && (
             <p className="muted small edition-note">

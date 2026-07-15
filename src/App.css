@@ -383,12 +383,78 @@ body {
   border-radius: 8px;
 }
 
-.examples {
+/* How-to-search help panel (reuses the .filters/details look) */
+.help {
+  margin: 0.75rem 0 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 0.4rem 0.75rem;
+}
+
+.help summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+  list-style: none;
+}
+
+.help summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.4rem;
+  transition: transform 0.15s;
+}
+
+.help[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.help-body {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.help-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.help-list li {
+  line-height: 1.45;
+  font-size: 0.92rem;
+}
+
+/* Grouped starter examples */
+.example-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 1.1rem 0;
+}
+
+.example-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+
+.example-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.example-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: center;
-  margin: 1rem 0;
 }
 
 .chip {
