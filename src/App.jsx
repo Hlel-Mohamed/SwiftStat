@@ -135,7 +135,7 @@ export default function App() {
     return c ? { name: c.name, className: c.className, level: c.level, abilities: c.abilities } : {}
   }, [characters, activeChar])
 
-  const { supported, listening, toggle } = useVoice((transcript) => setQuery(transcript))
+  const { supported, listening, error: voiceError, toggle } = useVoice((transcript) => setQuery(transcript))
 
   // Debounce the query so we don't run a fuzzy search over ~1300 docs and render up
   // to 40 heavy cards on every keystroke.
@@ -227,6 +227,8 @@ export default function App() {
           </button>
         )}
       </div>
+
+      {voiceError && <p className="voice-error" role="alert">🎤 {voiceError}</p>}
 
       {status === 'ready' && (
         <details className="filters">

@@ -373,6 +373,16 @@ body {
   cursor: pointer;
 }
 
+.voice-error {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: #f2c9b8;
+  background: rgba(199, 67, 58, 0.15);
+  border: 1px solid var(--condition);
+  border-radius: 8px;
+}
+
 .examples {
   display: flex;
   flex-wrap: wrap;

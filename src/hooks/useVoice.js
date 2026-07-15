@@ -11,9 +11,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // creates a start/stop tight loop (the mic flickering on and off). We therefore
 // restart ONLY when speech was detected very recently (a real mid-sentence cutoff),
 // throttle restarts so they can't loop, and otherwise stop cleanly.
+// Human-readable messages for the terminal Web Speech error codes. `network` is the
+// common one on Chromium/Firefox/Linux — those builds have no Google speech backend.
+const ERROR_MESSAGES = {
+  'not-allowed': 'Microphone blocked — allow mic access for this site in your browser.',
+  'service-not-allowed': 'Speech recognition is disabled in this browser.',
+  network: 'Voice needs Google’s speech service, which this browser can’t reach. Try Google Chrome.',
+  'audio-capture': 'No microphone was found.',
+  'language-not-supported': 'Voice language (en-US) isn’t supported here.',
+}
+
 export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
   const [supported, setSupported] = useState(false)
   const [listening, setListening] = useState(false)
+  const [error, setError] = useState('')
   const recognitionRef = useRef(null)
   const wantListeningRef = useRef(false)
   const silenceTimerRef = useRef(null)
@@ -105,12 +116,12 @@ export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
     }
 
     rec.onerror = (e) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        wantListeningRef.current = false
-        clearTimers()
-        setListening(false)
-      }
       // 'no-speech'/'aborted' are transient; onend handles them without restarting.
+      if (e.error === 'no-speech' || e.error === 'aborted') return
+      wantListeningRef.current = false
+      clearTimers()
+      setListening(false)
+      setError(ERROR_MESSAGES[e.error] || `Voice error: ${e.error}`)
     }
 
     recognitionRef.current = rec
@@ -129,6 +140,7 @@ export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
   const start = useCallback(() => {
     const rec = recognitionRef.current
     if (!rec || wantListeningRef.current) return
+    setError('')
     wantListeningRef.current = true
     lastSpeechAtRef.current = 0
     lastRestartAtRef.current = Date.now()
@@ -173,5 +185,5 @@ export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
     else start()
   }, [start, stop])
 
-  return { supported, listening, start, stop, toggle }
+  return { supported, listening, error, start, stop, toggle }
 }
