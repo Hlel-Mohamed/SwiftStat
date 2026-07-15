@@ -4,6 +4,7 @@ import { parseAttackQuery } from './engine/query.js'
 import { parseCasterQuery } from './engine/spellcast.js'
 import { useVoice } from './hooks/useVoice.js'
 import { Card, AttackCard, SpellCastCard } from './components/Card.jsx'
+import { CharacterBar } from './components/CharacterBar.jsx'
 import './App.css'
 
 const EXAMPLES = ['fireball', 'poisoned', 'goblin', 'longsword', 'rogue 18 dex daggers full attack', 'weapon mastery']
@@ -31,6 +32,29 @@ function initialHidden() {
   }
 }
 
+function initialCharacters() {
+  try {
+    const raw = localStorage.getItem('swiftstat-characters')
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+function initialActiveChar() {
+  try {
+    return localStorage.getItem('swiftstat-active-char') || ''
+  } catch {
+    return ''
+  }
+}
+const save = (key, value) => {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    /* storage disabled — keep in-memory state anyway */
+  }
+}
+
 export default function App() {
   const [query, setQuery] = useState('')
   const [edition, setEdition] = useState(initialEdition)
@@ -38,6 +62,8 @@ export default function App() {
   const [count, setCount] = useState(0)
   const [types, setTypes] = useState({}) // type -> count in the active edition
   const [hidden, setHidden] = useState(initialHidden) // category types the user hid
+  const [characters, setCharacters] = useState(initialCharacters)
+  const [activeChar, setActiveChar] = useState(initialActiveChar)
 
   // Load (or switch) the edition index. Re-runs when `edition` changes.
   useEffect(() => {
@@ -80,13 +106,34 @@ export default function App() {
 
   function chooseEdition(id) {
     if (id === edition) return
-    try {
-      localStorage.setItem('swiftstat-edition', id)
-    } catch {
-      /* storage disabled (e.g. Safari private) — switch anyway */
-    }
+    save('swiftstat-edition', id)
     setEdition(id)
   }
+
+  // --- Characters (calculator profiles) ---
+  function persistCharacters(list) {
+    setCharacters(list)
+    save('swiftstat-characters', JSON.stringify(list))
+  }
+  function saveCharacter(ch) {
+    const exists = characters.some((c) => c.id === ch.id)
+    persistCharacters(exists ? characters.map((c) => (c.id === ch.id ? ch : c)) : [...characters, ch])
+    setActiveCharacter(ch.id) // activate the just-saved character
+  }
+  function deleteCharacter(id) {
+    persistCharacters(characters.filter((c) => c.id !== id))
+    if (activeChar === id) setActiveCharacter('')
+  }
+  function setActiveCharacter(id) {
+    setActiveChar(id)
+    save('swiftstat-active-char', id)
+  }
+
+  // Defaults handed to the calculators when a character is active.
+  const defaults = useMemo(() => {
+    const c = characters.find((x) => x.id === activeChar)
+    return c ? { name: c.name, className: c.className, level: c.level, abilities: c.abilities } : {}
+  }, [characters, activeChar])
 
   const { supported, listening, toggle } = useVoice((transcript) => setQuery(transcript))
 
@@ -98,10 +145,13 @@ export default function App() {
     return () => clearTimeout(id)
   }, [query])
 
-  const attackCalc = useMemo(() => (debounced.trim() ? parseAttackQuery(debounced) : null), [debounced])
+  const attackCalc = useMemo(
+    () => (debounced.trim() ? parseAttackQuery(debounced, defaults) : null),
+    [debounced, defaults],
+  )
   const casterCalc = useMemo(
-    () => (debounced.trim() && !attackCalc ? parseCasterQuery(debounced) : null),
-    [debounced, attackCalc],
+    () => (debounced.trim() && !attackCalc ? parseCasterQuery(debounced, defaults) : null),
+    [debounced, attackCalc, defaults],
   )
   // `status` flips to 'loading' then 'ready' on an edition switch, so it (not
   // `edition`) is what correctly re-runs the search against the newly-active index.
@@ -109,7 +159,11 @@ export default function App() {
   // that hiding e.g. Monsters keeps them out of view (anti-metagaming).
   const { results, hiddenCount } = useMemo(() => {
     if (status !== 'ready' || !debounced.trim()) return { results: [], hiddenCount: 0 }
-    const raw = attackCalc ? search(attackCalc.weapon, 3) : search(debounced, 60)
+    // For an attack calc, only surface the matching weapon item(s) — not monsters that
+    // merely mention the weapon in their action text (now that it's indexed).
+    const raw = attackCalc
+      ? search(attackCalc.weapon, 8).filter((r) => r.type === 'equipment' || r.type === 'magic-item').slice(0, 3)
+      : search(debounced, 60)
     const shown = raw.filter((r) => !hidden.has(r.type))
     return { results: shown.slice(0, 40), hiddenCount: raw.length - shown.length }
   }, [debounced, attackCalc, status, hidden])
@@ -119,18 +173,27 @@ export default function App() {
       <header className="app-head">
         <div className="title-row">
           <h1>SwiftStat</h1>
-          <div className="edition-toggle" role="radiogroup" aria-label="Rules edition">
-            {Object.values(EDITIONS).map((e) => (
-              <button
-                key={e.id}
-                className={`edition ${edition === e.id ? 'active' : ''}`}
-                onClick={() => chooseEdition(e.id)}
-                role="radio"
-                aria-checked={edition === e.id}
-              >
-                {e.label}
-              </button>
-            ))}
+          <div className="header-controls">
+            <CharacterBar
+              characters={characters}
+              activeId={activeChar}
+              onSetActive={setActiveCharacter}
+              onSave={saveCharacter}
+              onDelete={deleteCharacter}
+            />
+            <div className="edition-toggle" role="radiogroup" aria-label="Rules edition">
+              {Object.values(EDITIONS).map((e) => (
+                <button
+                  key={e.id}
+                  className={`edition ${edition === e.id ? 'active' : ''}`}
+                  onClick={() => chooseEdition(e.id)}
+                  role="radio"
+                  aria-checked={edition === e.id}
+                >
+                  {e.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <p className="tagline">

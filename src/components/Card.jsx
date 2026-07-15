@@ -212,6 +212,7 @@ export function AttackCard({ calc }) {
       {calc.notes?.map((n, i) => (
         <p key={i} className="muted small">{n}</p>
       ))}
+      {calc.character && <p className="muted small">using <strong>{calc.character}</strong>’s stats</p>}
       <p className="muted small">Deterministic calc — no AI, computed from SRD rules.</p>
     </article>
   )
@@ -232,6 +233,7 @@ export function SpellCastCard({ calc }) {
       {calc.notes?.map((n, i) => (
         <p key={i} className="muted small">{n}</p>
       ))}
+      {calc.character && <p className="muted small">using <strong>{calc.character}</strong>’s stats</p>}
       <p className="muted small">Deterministic calc — no AI, computed from SRD rules.</p>
     </article>
   )

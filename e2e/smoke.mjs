@@ -75,6 +75,25 @@ try {
   const cells = await page.$$eval('.card-spell .scaling-cell', (els) => els.map((e) => e.textContent))
   rec('Fireball shows upcast scaling (3rd 8d6 … 9th)', cells.length >= 7 && /8d6/.test(cells.join(' ')), JSON.stringify(cells.slice(0, 2)))
 
+  // Character profiles: seed one, reload, and confirm auto-fill.
+  await page.evaluate(() => {
+    localStorage.setItem('swiftstat-characters', JSON.stringify([
+      { id: 'c1', name: 'Vex', className: 'rogue', subclass: 'Thief', level: 12, abilities: { dex: 20 } },
+    ]))
+    localStorage.setItem('swiftstat-active-char', 'c1')
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForFunction(() => /\d{3,} cards/.test(document.body.innerText), { timeout: 10000 })
+  await query('daggers full attack')
+  const acFormula = await page.$eval('.card-calc h2', (e) => e.textContent).catch(() => null)
+  const usingName = await page.$eval('.card-calc', (e) => /using/i.test(e.textContent) && /Vex/.test(e.textContent)).catch(() => false)
+  rec('character auto-fills attack calc (L12 rogue, DEX 20 → Sneak 6d6)', acFormula === '5 + 2d4 + 6d6', 'formula=' + acFormula)
+  rec('calc card shows "using Vex"', usingName)
+  // Reset for later checks.
+  await page.evaluate(() => { localStorage.removeItem('swiftstat-active-char'); localStorage.removeItem('swiftstat-characters') })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForFunction(() => /\d{3,} cards/.test(document.body.innerText), { timeout: 10000 })
+
   // Category filter: hiding Monsters removes them even from a direct search.
   const gobBefore = await query('goblin')
   rec('goblin visible before filtering', gobBefore.some((c) => c.type === 'monster'))
