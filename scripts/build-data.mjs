@@ -53,12 +53,19 @@ const firstSentence = (s) => {
 // --- per-type transforms (edition-aware where shapes differ) -------------------
 function makeSpell(sp) {
   const d = sp.damage
+  const type = d?.damage_type?.name
   let damage
-  if (d) {
-    const type = d.damage_type?.name ? ` ${d.damage_type.name.toLowerCase()}` : ''
-    const base = d.damage_at_slot_level?.[String(sp.level)] || Object.values(d.damage_at_slot_level || {})[0] ||
-      d.damage_at_character_level?.['1'] || Object.values(d.damage_at_character_level || {})[0]
-    if (base) damage = `${base}${type}`
+  let scaling
+  if (d?.damage_at_slot_level) {
+    // Upcasting: damage by spell-slot level (e.g. Fireball 3rd→9th).
+    const rows = Object.entries(d.damage_at_slot_level).map(([lvl, dice]) => ({ level: +lvl, dice }))
+    scaling = { by: 'slot', damageType: type, rows }
+    damage = `${d.damage_at_slot_level[String(sp.level)] || rows[0].dice}${type ? ` ${type.toLowerCase()}` : ''}`
+  } else if (d?.damage_at_character_level) {
+    // Cantrip scaling: damage by character level (e.g. Fire Bolt 1/5/11/17).
+    const rows = Object.entries(d.damage_at_character_level).map(([lvl, dice]) => ({ level: +lvl, dice }))
+    scaling = { by: 'character', damageType: type, rows }
+    damage = `${rows[0].dice}${type ? ` ${type.toLowerCase()}` : ''}`
   }
   let save
   if (sp.dc) save = `${sp.dc.dc_type?.name || 'save'} save${sp.dc.dc_success === 'half' ? ' (half on success)' : ''}`
@@ -68,7 +75,7 @@ function makeSpell(sp) {
     level: sp.level, school: sp.school?.name, castingTime: sp.casting_time, range: sp.range,
     components: (sp.components || []).join(', ') + (sp.material ? ` (${clip(sp.material, 80)})` : ''),
     duration: (sp.concentration ? 'Concentration, ' : '') + sp.duration, ritual: sp.ritual || undefined,
-    damage, save,
+    damage, save, scaling,
     areaOfEffect: sp.area_of_effect ? `${sp.area_of_effect.size}-ft ${sp.area_of_effect.type}` : undefined,
     classes: (sp.classes || []).map((c) => c.name).join(', ') || undefined,
     text: getText(sp), higherLevel: sp.higher_level?.length ? sp.higher_level.join('\n') : undefined,

@@ -265,6 +265,44 @@ body {
   font-weight: 600;
 }
 
+.scaling {
+  margin-top: 0.6rem;
+}
+
+.scaling-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+}
+
+.scaling-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+  min-width: 3.4rem;
+}
+
+.scaling-lvl {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.scaling-dice {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.scaling-avg {
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
 .section-label {
   margin: 0.8rem 0 0.2rem;
   font-size: 0.8rem;

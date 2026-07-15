@@ -10,13 +10,8 @@
 // *correct*. If a query doesn't look like an attack calc, `parseAttackQuery`
 // returns null and the app falls back to plain search.
 
-import {
-  abilityModifier,
-  proficiencyBonus,
-  parseDice,
-  formatDice,
-  averageDamage,
-} from './dice.js'
+import { proficiencyBonus, parseDice, formatDice, averageDamage } from './dice.js'
+import { parseStats } from './parse.js'
 
 // Weapon table. Flags:
 //   finesse   → may use the higher of STR/DEX
@@ -54,8 +49,6 @@ const CLASS_INFO = {
   rogue: {}, // no Extra Attack; relies on Sneak Attack + two-weapon fighting
 }
 
-const ABILITY_WORDS = 'str|dex|con|int|wis|cha|strength|dexterity|constitution|intelligence|wisdom|charisma'
-
 // Two-word spellings map to a canonical weapon key.
 const WEAPON_ALIASES = {
   'short sword': 'shortsword', 'great sword': 'greatsword', 'great axe': 'greataxe',
@@ -78,11 +71,7 @@ function attacksFromClass(className, level) {
 }
 
 export function parseAttackQuery(raw) {
-  const lower = ` ${raw.toLowerCase()} `
-  // Two normalized views: `q` strips all punctuation (weapon/class/flag matching);
-  // `qs` keeps + and - so "+4 dex" survives (ability modifiers).
-  const q = ` ${lower.replace(/[^a-z0-9]+/g, ' ').trim()} `
-  const qs = ` ${lower.replace(/[^a-z0-9+-]+/g, ' ').trim()} `
+  const { q, abilities, modOf, level, loneMod } = parseStats(raw)
 
   // --- Weapon (aliases + plural detection for two-weapon fighting) ---
   let weaponName = null
@@ -107,46 +96,6 @@ export function parseAttackQuery(raw) {
       className = name
       break
     }
-  }
-
-  // --- Level & abilities (consume tokens so digits aren't double-counted) ---
-  let work = qs
-  let level = null
-  const lvl = work.match(/(?:level|lvl|lv)\s*(\d+)|\b(\d+)(?:st|nd|rd|th)\b/)
-  if (lvl) {
-    level = parseInt(lvl[1] || lvl[2], 10)
-    work = work.replace(lvl[0], ' ')
-  }
-
-  // Each ability may be given as a SCORE (unsigned, e.g. "18 dex") or a MODIFIER
-  // (signed, e.g. "+4 dex" / "dex -1"). The sign is what disambiguates the two.
-  const abilities = {} // key -> { score } | { mod }
-  const abilRe = new RegExp(`([+-]?\\d+)\\s*(${ABILITY_WORDS})|(${ABILITY_WORDS})\\s*([+-]?\\d+)`, 'g')
-  let am
-  while ((am = abilRe.exec(work)) !== null) {
-    const key = (am[2] || am[3]).slice(0, 3)
-    const numStr = am[1] ?? am[4]
-    abilities[key] = /^[+-]/.test(numStr) ? { mod: parseInt(numStr, 10) } : { score: parseInt(numStr, 10) }
-  }
-  work = work.replace(abilRe, ' ')
-
-  // A lone signed number (not attached to an ability) is taken as the modifier of
-  // whatever ability the weapon uses — e.g. "rapier +7".
-  let loneMod = null
-  const lone = work.match(/(?:^|\s)([+-]\d+)(?=\s)/)
-  if (lone) loneMod = parseInt(lone[1], 10)
-
-  // Strip signed numbers, then a leftover bare (unsigned) number is the level.
-  const forLevel = work.replace(/[+-]\d+/g, ' ')
-  if (level == null) {
-    const bare = forLevel.match(/\b(\d+)\b/)
-    if (bare) level = parseInt(bare[1], 10)
-  }
-
-  const modOf = (key) => {
-    const a = abilities[key]
-    if (!a) return null
-    return a.mod != null ? a.mod : abilityModifier(a.score)
   }
 
   // --- Ability selection: bows force DEX; finesse takes the better modifier ---

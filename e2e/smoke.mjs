@@ -65,6 +65,16 @@ try {
   const calc = await page.$eval('.card-calc h2', (e) => e.textContent).catch(() => null)
   rec('attack calc includes Sneak Attack (d6)', calc === '4 + 2d4 + 3d6', 'formula=' + calc)
 
+  // Spellcaster stats calc.
+  await query('wizard 18 int level 5')
+  const dc = await page.$eval('.card-calc h2', (e) => e.textContent).catch(() => null)
+  rec('caster calc: DC 15 / +7', /DC 15/.test(dc || '') && /\+7/.test(dc || ''), 'header=' + dc)
+
+  // Spell upcast scaling table.
+  await query('fireball')
+  const cells = await page.$$eval('.card-spell .scaling-cell', (els) => els.map((e) => e.textContent))
+  rec('Fireball shows upcast scaling (3rd 8d6 … 9th)', cells.length >= 7 && /8d6/.test(cells.join(' ')), JSON.stringify(cells.slice(0, 2)))
+
   // Edition toggle.
   await page.click('.edition:has-text("5.5")')
   await page.waitForFunction(() => !/Loading/.test(document.querySelector('.results')?.textContent || ''), { timeout: 8000 })

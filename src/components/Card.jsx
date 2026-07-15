@@ -1,3 +1,34 @@
+import { parseDice, averageDamage } from '../engine/dice.js'
+
+function ORDINAL(n) {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
+}
+
+// Compact upcast / cantrip-scaling table for damage spells.
+function ScalingTable({ scaling }) {
+  if (!scaling?.rows?.length) return null
+  const label = scaling.by === 'slot' ? 'By slot level' : 'By character level'
+  return (
+    <div className="scaling">
+      <p className="section-label">{label}{scaling.damageType ? ` · ${scaling.damageType}` : ''}</p>
+      <div className="scaling-rows">
+        {scaling.rows.map((r) => {
+          const avg = Math.round(averageDamage(parseDice(r.dice)))
+          return (
+            <span key={r.level} className="scaling-cell">
+              <span className="scaling-lvl">{scaling.by === 'slot' ? ORDINAL(r.level) : `L${r.level}`}</span>
+              <span className="scaling-dice">{r.dice}</span>
+              <span className="scaling-avg">avg {avg}</span>
+            </span>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const TYPE_LABEL = {
   spell: 'Spell',
   condition: 'Condition',
@@ -97,6 +128,7 @@ export function Card({ entry }) {
           <Row label="Duration" value={entry.duration} />
           <Row label="Components" value={entry.components} />
           <Row label="Classes" value={entry.classes} />
+          <ScalingTable scaling={entry.scaling} />
         </>
       )}
 
@@ -176,6 +208,26 @@ export function AttackCard({ calc }) {
         <span className="badge">Attack</span>
       </header>
       <p className="subtitle">avg {calc.average} damage · to hit +{calc.toHit} · {calc.attacks}×</p>
+      <p className="body">{calc.explanation}</p>
+      {calc.notes?.map((n, i) => (
+        <p key={i} className="muted small">{n}</p>
+      ))}
+      <p className="muted small">Deterministic calc — no AI, computed from SRD rules.</p>
+    </article>
+  )
+}
+
+export function SpellCastCard({ calc }) {
+  return (
+    <article className="card card-calc">
+      <header className="card-head">
+        <h2>DC {calc.saveDC} · {calc.spellAttack >= 0 ? '+' : ''}{calc.spellAttack} to hit</h2>
+        <span className="badge">Spellcasting</span>
+      </header>
+      <p className="subtitle">
+        {calc.className ? `${calc.className[0].toUpperCase()}${calc.className.slice(1)} · ` : ''}
+        {calc.abilityName}{calc.level != null ? ` · level ${calc.level}` : ''}
+      </p>
       <p className="body">{calc.explanation}</p>
       {calc.notes?.map((n, i) => (
         <p key={i} className="muted small">{n}</p>

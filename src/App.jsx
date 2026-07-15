@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { loadIndex, search, EDITIONS, DEFAULT_EDITION, PROFILE } from './engine/search.js'
 import { parseAttackQuery } from './engine/query.js'
+import { parseCasterQuery } from './engine/spellcast.js'
 import { useVoice } from './hooks/useVoice.js'
-import { Card, AttackCard } from './components/Card.jsx'
+import { Card, AttackCard, SpellCastCard } from './components/Card.jsx'
 import './App.css'
 
 const EXAMPLES = ['fireball', 'poisoned', 'goblin', 'longsword', 'rogue 18 dex daggers full attack', 'weapon mastery']
@@ -55,6 +56,10 @@ export default function App() {
   }, [query])
 
   const attackCalc = useMemo(() => (debounced.trim() ? parseAttackQuery(debounced) : null), [debounced])
+  const casterCalc = useMemo(
+    () => (debounced.trim() && !attackCalc ? parseCasterQuery(debounced) : null),
+    [debounced, attackCalc],
+  )
   // `status` flips to 'loading' then 'ready' on an edition switch, so it (not
   // `edition`) is what correctly re-runs the search against the newly-active index.
   const results = useMemo(() => {
@@ -137,10 +142,11 @@ export default function App() {
           <p className="muted">Couldn’t load the rules data. Check your connection and reload.</p>
         )}
         {attackCalc && <AttackCard calc={attackCalc} />}
+        {casterCalc && <SpellCastCard calc={casterCalc} />}
         {results.map((entry) => (
           <Card key={entry.id} entry={entry} />
         ))}
-        {status === 'ready' && debounced.trim() && !attackCalc && results.length === 0 && (
+        {status === 'ready' && debounced.trim() && !attackCalc && !casterCalc && results.length === 0 && (
           <p className="muted">No match. Try a spell, condition, monster, action, or weapon name.</p>
         )}
       </main>
