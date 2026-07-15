@@ -11,7 +11,10 @@
     "data": "node scripts/build-data.mjs",
     "data:personal": "SWIFTSTAT_PROFILE=personal node scripts/build-data.mjs",
     "dev:personal": "SWIFTSTAT_PROFILE=personal vite",
-    "build:personal": "SWIFTSTAT_PROFILE=personal vite build"
+    "build:personal": "SWIFTSTAT_PROFILE=personal npm run data:personal && SWIFTSTAT_PROFILE=personal vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node e2e/smoke.mjs"
   },
   "dependencies": {
     "minisearch": "^7.2.0",
@@ -25,6 +28,7 @@
     "oxlint": "^1.71.0",
     "playwright": "^1.61.1",
     "vite": "^8.1.1",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^4.1.10"
   }
 }
