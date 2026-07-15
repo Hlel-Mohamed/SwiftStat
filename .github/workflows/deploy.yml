@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +24,22 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # NOTE: we intentionally do NOT run `npm run data` here — the SRD JSON is
+      # pre-committed because CI has no ../5e-database clone. Regenerate it locally
+      # (npm run data) and commit when the upstream data changes.
       # BASE_PATH must match the repo name so assets resolve under /<repo>/.
       - run: npm run build
         env:
