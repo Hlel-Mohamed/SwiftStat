@@ -2,15 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Tap-to-talk voice search using the Web Speech API.
 //
-// Goal: keep listening while the user talks, then stop by itself after a
-// comfortable pause (default 1.5s of silence) — no manual stop needed.
+// Goal: keep listening while the user talks, then stop by itself shortly after they
+// finish — no manual stop needed.
 //
-// The API gives no knob for the silence threshold, and its own end-of-speech is
-// too twitchy. So we run continuous mode plus our OWN silence timer. The catch:
-// Chrome fires `no-speech` → `onend` on silence, so blindly restarting on `onend`
-// creates a start/stop tight loop (the mic flickering on and off). We therefore
-// restart ONLY when speech was detected very recently (a real mid-sentence cutoff),
-// throttle restarts so they can't loop, and otherwise stop cleanly.
+// One session (`continuous = true`) plus our own silence timer, and deliberately NO
+// restart on `onend`. An earlier version restarted to bridge mid-phrase cutoffs; on a
+// phone that made the mic run forever and re-commit interim text, so "18 dex" came out
+// as "18 18 18 18 tex". Now only FINAL results can persist and a session end is final.
 // Human-readable messages for the terminal Web Speech error codes. `network` is the
 // common one on Chromium/Firefox/Linux — those builds have no Google speech backend.
 const ERROR_MESSAGES = {
@@ -21,7 +19,7 @@ const ERROR_MESSAGES = {
   'language-not-supported': 'Voice language (en-US) isn’t supported here.',
 }
 
-export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
+export function useVoice(onResult, { silenceMs = 1200, maxMs = 15000 } = {}) {
   const [supported, setSupported] = useState(false)
   const [listening, setListening] = useState(false)
   const [error, setError] = useState('')
@@ -29,13 +27,6 @@ export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
   const wantListeningRef = useRef(false)
   const silenceTimerRef = useRef(null)
   const maxTimerRef = useRef(null)
-  const lastSpeechAtRef = useRef(0)
-  const lastRestartAtRef = useRef(0)
-  // Transcript accumulation across Chrome's mid-phrase session cutoffs: `committed`
-  // holds text finalized before each bridged restart; `session` is the current
-  // session's text. Reporting committed+session keeps early words (fixes "fire…ball").
-  const committedRef = useRef('')
-  const sessionTextRef = useRef('')
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
 
@@ -71,45 +62,28 @@ export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
       silenceTimerRef.current = setTimeout(stopIntentionally, silenceMs)
     }
 
-    const report = () => {
-      const full = `${committedRef.current} ${sessionTextRef.current}`.replace(/\s+/g, ' ').trim()
+    rec.onspeechstart = armSilenceTimer
+
+    // `continuous` keeps one session open, so `e.results` already holds everything said.
+    // We separate FINAL from interim results and only ever let final text persist — that
+    // makes the old duplication ("18 18 18 18 tex") structurally impossible.
+    rec.onresult = (e) => {
+      armSilenceTimer()
+      let finalText = ''
+      let interimText = ''
+      // Index loop: SpeechRecognitionResultList is an indexed collection, not iterable.
+      for (let i = 0; i < e.results.length; i++) {
+        const res = e.results[i]
+        if (res.isFinal) finalText += res[0].transcript
+        else interimText += res[0].transcript
+      }
+      const full = `${finalText} ${interimText}`.replace(/\s+/g, ' ').trim()
       onResultRef.current?.(full)
     }
 
-    const noteSpeech = () => {
-      lastSpeechAtRef.current = Date.now()
-      armSilenceTimer()
-    }
-
-    rec.onspeechstart = noteSpeech
-
-    rec.onresult = (e) => {
-      noteSpeech()
-      let transcript = ''
-      for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript
-      sessionTextRef.current = transcript
-      report()
-    }
-
+    // No restart/bridging: once the session ends, listening is over. Restarting here is
+    // what previously made the mic run forever and re-commit interim text.
     rec.onend = () => {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
-      silenceTimerRef.current = null
-      const now = Date.now()
-      const spokeRecently = lastSpeechAtRef.current && now - lastSpeechAtRef.current < silenceMs
-      const notLooping = now - lastRestartAtRef.current > 500
-      // Bridge a genuine mid-sentence cutoff — commit this session's text first so it
-      // isn't lost when the new (empty) session begins.
-      if (wantListeningRef.current && spokeRecently && notLooping) {
-        lastRestartAtRef.current = now
-        if (sessionTextRef.current) committedRef.current = `${committedRef.current} ${sessionTextRef.current}`.trim()
-        sessionTextRef.current = ''
-        try {
-          rec.start()
-          return
-        } catch {
-          /* fall through to stop */
-        }
-      }
       wantListeningRef.current = false
       clearTimers()
       setListening(false)
@@ -142,10 +116,6 @@ export function useVoice(onResult, { silenceMs = 1500, maxMs = 25000 } = {}) {
     if (!rec || wantListeningRef.current) return
     setError('')
     wantListeningRef.current = true
-    lastSpeechAtRef.current = 0
-    lastRestartAtRef.current = Date.now()
-    committedRef.current = ''
-    sessionTextRef.current = ''
     setListening(true)
     try {
       rec.start()

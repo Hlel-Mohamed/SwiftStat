@@ -102,6 +102,24 @@ body {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
 }
 
+.charbar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 19;
+}
+
+.charbar-head {
+  display: none; /* only needed for the mobile bottom sheet */
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.charbar-title {
+  font-weight: 600;
+}
+
 .char-list {
   display: flex;
   flex-direction: column;
@@ -373,6 +391,30 @@ body {
   cursor: pointer;
 }
 
+.install-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  font-size: 0.88rem;
+}
+
+.install-text {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.install-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
 .voice-error {
   margin: 0.6rem 0 0;
   padding: 0.5rem 0.75rem;
@@ -642,4 +684,52 @@ body {
 
 .app-foot a {
   color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Mobile. The character panel used to be an absolutely-positioned popover
+   anchored `right: 0`; once the header wrapped, that put it ~204px off the left
+   edge at 390px wide, making characters impossible to create or select on a
+   phone. On small screens it becomes a bottom sheet instead.
+   --------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .charbar-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: auto;
+    max-height: 85vh;
+    overflow-y: auto;
+    border-radius: 14px 14px 0 0;
+    padding: 0.9rem 0.9rem calc(0.9rem + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55);
+  }
+
+  .charbar-head {
+    display: flex;
+  }
+
+  /* Six score inputs don't fit across a 390px screen — use two rows of three. */
+  .char-abilities {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  .char-abil input,
+  .char-form input,
+  .char-form select {
+    font-size: 1rem; /* >=16px stops iOS Safari zooming the page on focus */
+    padding: 0.5rem;
+  }
+
+  .char-icon,
+  .char-pick {
+    padding: 0.55rem 0.6rem; /* larger touch targets */
+  }
+
+  .title-row h1 {
+    font-size: 1.6rem;
+  }
 }

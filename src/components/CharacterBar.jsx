@@ -92,24 +92,38 @@ function CharForm({ value, onSubmit, onCancel }) {
 
 export function CharacterBar({ characters, activeId, onSetActive, onSave, onDelete }) {
   const [editing, setEditing] = useState(null)
+  // Controlled so we can close it programmatically — on mobile the panel is a bottom
+  // sheet, where hunting back up for the summary to dismiss it would be awkward.
+  const [open, setOpen] = useState(false)
   const active = characters.find((c) => c.id === activeId)
 
+  const close = () => {
+    setOpen(false)
+    setEditing(null)
+  }
+  const pick = (id) => {
+    onSetActive(id)
+    close()
+  }
+
   return (
-    <details className="charbar">
+    <details className="charbar" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>{active ? `▾ ${active.name}` : '▾ Character'}</summary>
+      {open && <div className="charbar-backdrop" onClick={close} />}
       <div className="charbar-panel">
+        <div className="charbar-head">
+          <span className="charbar-title">Character</span>
+          <button className="char-icon" onClick={close} aria-label="Close character panel">✕</button>
+        </div>
         <div className="char-list">
-          <button
-            className={`char-pick ${!activeId ? 'active' : ''}`}
-            onClick={() => onSetActive('')}
-          >
+          <button className={`char-pick ${!activeId ? 'active' : ''}`} onClick={() => pick('')}>
             No character
           </button>
           {characters.map((c) => (
             <div key={c.id} className="char-row">
               <button
                 className={`char-pick ${activeId === c.id ? 'active' : ''}`}
-                onClick={() => onSetActive(c.id)}
+                onClick={() => pick(c.id)}
               >
                 {c.name} <span className="muted small">{summarize(c)}</span>
               </button>
@@ -121,7 +135,7 @@ export function CharacterBar({ characters, activeId, onSetActive, onSave, onDele
         {editing ? (
           <CharForm
             value={editing}
-            onSubmit={(ch) => { onSave(ch); setEditing(null) }}
+            onSubmit={(ch) => { onSave(ch); close() }}
             onCancel={() => setEditing(null)}
           />
         ) : (

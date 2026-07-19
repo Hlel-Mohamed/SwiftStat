@@ -41,7 +41,7 @@ try {
 
   const query = async (q) => {
     await page.fill('.search-bar input', q)
-    await page.waitForTimeout(320) // debounce + render
+    await page.waitForTimeout(550) // > SEARCH_DEBOUNCE_MS (350) + render
     return page.$$eval('.card', (els) =>
       els.map((e) => ({
         type: (e.className.match(/card-([a-z-]+)/) || [])[1],
@@ -113,6 +113,76 @@ try {
   rec('edition toggle → 5.5 active', active.includes('2024'), active)
   const gob = await query('goblin')
   rec('5.5: borrowed monster shows 5.1 badge', await page.$('.card-monster .badge-51') !== null, JSON.stringify(gob[0]))
+
+  // --- Mobile regression: the character panel used to render ~204px off-screen ---
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 820 }, isMobile: true })
+  await mobile.goto(URL, { waitUntil: 'networkidle' })
+  await mobile.waitForFunction(() => /\d{3,} cards/.test(document.body.innerText), { timeout: 10000 })
+  await mobile.click('.charbar summary')
+  await mobile.waitForTimeout(200)
+  const box = await mobile.$eval('.charbar-panel', (e) => {
+    const r = e.getBoundingClientRect()
+    return { left: Math.round(r.left), right: Math.round(r.right) }
+  })
+  rec('mobile: character panel is on-screen', box.left >= 0 && box.right <= 390, JSON.stringify(box))
+  // And it is actually usable: create + activate a character at 390px.
+  await mobile.click('.charbar .chip') // + Add character
+  await mobile.fill('.char-name', 'Mob')
+  await mobile.selectOption('.char-form select', 'rogue')
+  await mobile.fill('.char-level', '5')
+  await mobile.click('.char-form .primary')
+  await mobile.waitForTimeout(250)
+  const activeName = await mobile.$eval('.charbar summary', (e) => e.textContent)
+  rec('mobile: can create + activate a character', /Mob/.test(activeName), activeName)
+  rec('mobile: panel auto-closes after save', await mobile.$('.charbar-panel:visible') === null)
+  await mobile.close()
+
+  // --- Voice: only FINAL results persist, and it stops (no endless restart) ---
+  const voice = await browser.newPage()
+  await voice.addInitScript(() => {
+    class MockSR {
+      start() {
+        this.onstart?.({})
+        // Interim "18" several times, then a session end mid-stream, then the final.
+        const interim = (t) => ({ results: [{ 0: { transcript: t }, isFinal: false, length: 1 }] })
+        setTimeout(() => this.onresult?.(interim('18')), 40)
+        setTimeout(() => this.onresult?.(interim('18')), 80)
+        setTimeout(() => this.onend?.({}), 120) // previously triggered a bridging restart
+        setTimeout(() => this.onresult?.({ results: [{ 0: { transcript: '18 dex' }, isFinal: true, length: 1 }] }), 160)
+      }
+      stop() { this.onend?.({}) }
+      abort() {}
+    }
+    window.SpeechRecognition = MockSR
+    window.webkitSpeechRecognition = MockSR
+  })
+  await voice.goto(URL, { waitUntil: 'networkidle' })
+  await voice.waitForFunction(() => /\d{3,} cards/.test(document.body.innerText), { timeout: 10000 })
+  await voice.click('.mic')
+  await voice.waitForTimeout(400)
+  const spoken = await voice.inputValue('.search-bar input')
+  rec('voice: no duplicated words', !/18\s+18/.test(spoken), 'value=' + JSON.stringify(spoken))
+  await voice.waitForTimeout(1600) // past the 1200ms silence window
+  const stillListening = await voice.$('.mic.listening') !== null
+  rec('voice: stops listening after the phrase', !stillListening)
+  await voice.close()
+
+  // --- Install banner appears on beforeinstallprompt ---
+  const inst = await browser.newPage()
+  await inst.goto(URL, { waitUntil: 'networkidle' })
+  await inst.waitForFunction(() => /\d{3,} cards/.test(document.body.innerText), { timeout: 10000 })
+  await inst.evaluate(() => {
+    const e = new Event('beforeinstallprompt')
+    e.prompt = () => {}
+    e.userChoice = Promise.resolve({ outcome: 'accepted' })
+    window.dispatchEvent(e)
+  })
+  await inst.waitForTimeout(200)
+  rec('install banner shows when installable', await inst.$('.install-banner') !== null)
+  await inst.click('.install-banner .chip:has-text("Not now")')
+  await inst.waitForTimeout(150)
+  rec('install banner dismissable', await inst.$('.install-banner') === null)
+  await inst.close()
 
   rec('no JS errors', errors.length === 0, JSON.stringify(errors))
 } finally {

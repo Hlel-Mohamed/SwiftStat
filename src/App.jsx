@@ -3,9 +3,13 @@ import { loadIndex, search, EDITIONS, DEFAULT_EDITION, PROFILE } from './engine/
 import { parseAttackQuery } from './engine/query.js'
 import { parseCasterQuery } from './engine/spellcast.js'
 import { useVoice } from './hooks/useVoice.js'
+import { useInstallPrompt } from './hooks/useInstallPrompt.js'
 import { Card, AttackCard, SpellCastCard } from './components/Card.jsx'
 import { CharacterBar } from './components/CharacterBar.jsx'
 import './App.css'
+
+// Delay after the last keystroke before searching, so results don't churn mid-word.
+const SEARCH_DEBOUNCE_MS = 350
 
 // Grouped starter queries — the empty state that teaches what SwiftStat can do.
 const EXAMPLE_GROUPS = [
@@ -81,6 +85,13 @@ function initialHelpOpen() {
     return true
   }
 }
+function initialInstallDismissed() {
+  try {
+    return localStorage.getItem('swiftstat-install-dismissed') === '1'
+  } catch {
+    return false
+  }
+}
 const save = (key, value) => {
   try {
     localStorage.setItem(key, value)
@@ -99,6 +110,13 @@ export default function App() {
   const [characters, setCharacters] = useState(initialCharacters)
   const [activeChar, setActiveChar] = useState(initialActiveChar)
   const [helpOpen, setHelpOpen] = useState(initialHelpOpen)
+  const [installDismissed, setInstallDismissed] = useState(initialInstallDismissed)
+  const { canInstall, iosHint, promptInstall } = useInstallPrompt()
+
+  function dismissInstall() {
+    setInstallDismissed(true)
+    save('swiftstat-install-dismissed', '1')
+  }
 
   function onHelpToggle(e) {
     const open = e.target.open
@@ -182,7 +200,7 @@ export default function App() {
   // to 40 heavy cards on every keystroke.
   const [debounced, setDebounced] = useState('')
   useEffect(() => {
-    const id = setTimeout(() => setDebounced(query), 180)
+    const id = setTimeout(() => setDebounced(query), SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(id)
   }, [query])
 
@@ -268,6 +286,29 @@ export default function App() {
           </button>
         )}
       </div>
+
+      {!installDismissed && (canInstall || iosHint) && (
+        <div className="install-banner">
+          <span className="install-text">
+            📲 <strong>Install SwiftStat</strong> — opens like an app and works offline.
+            {iosHint && !canInstall && ' On iPhone: tap Share, then “Add to Home Screen”.'}
+          </span>
+          <span className="install-actions">
+            {canInstall && (
+              <button
+                className="chip primary"
+                onClick={async () => {
+                  const outcome = await promptInstall()
+                  if (outcome === 'accepted') dismissInstall()
+                }}
+              >
+                Install
+              </button>
+            )}
+            <button className="chip" onClick={dismissInstall}>Not now</button>
+          </span>
+        </div>
+      )}
 
       {voiceError && <p className="voice-error" role="alert">🎤 {voiceError}</p>}
 
