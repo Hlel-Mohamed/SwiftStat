@@ -17,6 +17,7 @@
     "test:e2e": "node e2e/smoke.mjs"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "minisearch": "^7.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

@@ -33,6 +33,9 @@ try {
   await waitForServer()
   browser = await chromium.launch()
   const page = await browser.newPage()
+  // Vercel serves /_vercel/insights/* itself; under `vite preview` it 404s and the
+  // resulting console error would trip the "no JS errors" check below. Stub it.
+  await page.route('**/_vercel/insights/**', (route) => route.fulfill({ status: 200, body: '' }))
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
   page.on('console', (m) => m.type() === 'error' && errors.push('console: ' + m.text()))
